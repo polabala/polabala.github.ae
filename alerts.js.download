@@ -1,0 +1,37 @@
+var req = new XMLHttpRequest(); 
+req.open('GET', '/_files/json/alerts.json', true);
+req.onreadystatechange = function() {
+    if (req.readyState === 4 && req.status === 200) {
+        var data = JSON.parse(req.responseText);
+        for(var i= 0; i<data.alerts.length; i++){
+            var alert = data.alerts[i];
+            var message = decodeHTML(alert.message);
+            if(alert.dm == "Sticky"){
+                var alertContent = '<section class="emergency-alert ' + alert.color + '" aria-label="Emergency Alert"><div class="emergency-alert-inner container"><h3 class="emergency-alert-title">'+ alert.headline + '</h3> <div class="emergency-alert-text"> <p>' + message + '</p></div></div></section>';
+            }else{
+                var alertContent = '<section class="emergency-alert ' + alert.color + '" aria-label="Emergency Alert"><div class="emergency-alert-inner container"><h3 class="emergency-alert-title">'+ alert.headline + '</h3> <div class="emergency-alert-text"> <p>' + message + '</p></div><button class="emergency-alert-close"><span class="sr-only">Dismiss this alert</span></button></div></section>';
+            }
+            $('body').prepend(alertContent);
+        }
+    }
+      var initAlert = function() {
+
+    var $alert = $('.emergency-alert');
+
+    $alert.each(function() {
+      var $this = $(this);
+      $this.on('click', '.emergency-alert-close', function(){
+        $this.addClass('is-hidden');
+      });
+    });
+  };
+    initAlert();
+};
+req.send();
+
+
+function decodeHTML(html) {
+    var txt = document.createElement("textarea");
+    txt.innerHTML = html;
+    return txt.value;
+}

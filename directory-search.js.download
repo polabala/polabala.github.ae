@@ -1,0 +1,242 @@
+var DirectorySearch = (function($) {
+    var ajax_url        = "https://webapi.bowdoin.edu/webapi/directory/search",
+        $search_form    = $("#dir-search-form"),
+        $results_div    = $("#dir-search-results"),
+        $alerts_div     = $("#dir-search-alerts"),
+        field_ids       = ["ds-first", "ds-last", "ds-dept"],
+        param_values    = {},
+        num_results;
+
+  function init() {
+      $search_form.on("submit", searchDirectory);
+      
+      $('#ds-first').focus();
+      
+      // if there are variables in the url then filter and display
+      // otherwise display the results now
+      var arr = window.location.href.split('?');
+      if (arr.length > 1 && arr[1] !== '') {
+          $.each(deparam(arr[1]), function(i, j) {
+            if(j) {
+              $("#ds-" + i).val(j);
+              $thisQuestion = $("#ds-" + i).parents('.form_question'),
+              $thisLabel = $thisQuestion.find('.form_label');
+              $thisLabel.addClass('active'); // move label to top
+            }
+          });
+      }
+  }
+  
+  // deparam the query string
+  // via https://stackoverflow.com/questions/6992585/jquery-deserialize-form
+  function deparam(query) {
+      var pairs, i, keyValuePair, key, value, map = {};
+      // remove leading question mark if its there
+      if (query.slice(0, 1) === '?') {
+          query = query.slice(1);
+      }
+      if (query !== '') {
+          pairs = query.split('&');
+          for (i = 0; i < pairs.length; i += 1) {
+              keyValuePair = pairs[i].split('=');
+              key = decodeURIComponent(keyValuePair[0]);
+              value = (keyValuePair.length > 1) ? decodeURIComponent(keyValuePair[1]) : undefined;
+              map[key] = value;
+          }
+      }
+      return map;
+  }
+  
+  function formHasValues() {
+    var val = false;
+    $.each(field_ids, function(i,j) {
+      if($("#"+j).val().trim() !== "") {
+        val = true;
+        return true;
+      }
+    });
+    return val;
+  }
+  
+  function searchDirectory(event) {
+    event.preventDefault();
+    
+    if(formHasValues() === false) {
+      alert("Please enter a name or department to search.");
+      return false;
+    }
+    
+    var serialized_form_data = $search_form.serialize();
+    $alerts_div.hide();
+    
+    $.ajax(ajax_url, 
+      { dataType: "json", 
+        method: "GET",
+        data: serialized_form_data
+      }).then(function(data) {
+        num_results = data.length;
+        data.length > 0 ? displayResults(data) : displayNoResults();
+      });
+  }
+  
+  function hideSearchForm() {
+    $search_form.hide();
+  }
+  
+  function displayResults(data) {
+      console.log(data);
+    var result_text = (data.length > 1) ? "results" : "result";  
+    var $reset = $("<a>", {href: "#"}).on("click", function(e) {
+      e.preventDefault();
+      $results_div.empty();
+      $search_form.show();
+      $search_form.trigger("reset"); 
+      $('#ds-last').blur();
+      $('#ds-first').focus();
+    }).text("Search again");
+    
+    hideSearchForm();
+    
+    $results_div.append(data.length + " " + result_text + ". ");
+    $results_div.append($reset);
+   
+    // append the new unordered list class
+    $ul_results = $("<ul>", {class: "directory-board"});
+    $results_div.append($ul_results);
+    
+    $.each(data, appendResult);
+  }
+  
+  function displayNoResults() {
+    $alerts_div.html("No results, please try again.");
+    $alerts_div.show();
+  }
+  
+  function getTelephoneLink(phone_number) {
+      let phone_num = processPhoneNum(phone_number);
+      return "<a href='tel:" + "1-" + phone_num + "'>" + phone_num + "</a>";
+  }
+  
+  function getTelephoneLinkStudent(phone_number) {
+      return "<a href='tel:" + "1-207-" + phone_number + "'>" + "207-" + phone_number + "</a>";
+  }
+  
+  function getEmailLink(email) {
+      return "<a href='mailto:" + email + "'>" + email + "</a>";
+  }
+  
+  function appendResult(i, j) {
+    var $panel    = $("<div>", { class: "directory-panel-text" }),
+        worker    = j.worker ? j.worker : "", 
+        positions = worker ? getPositionsString(worker.positions) : "",
+        phone_num;
+        
+    var sidebar   = document.getElementsByClassName("barebones-page").length; // Used to determine if on the search page
+    
+    if(j.student && j.student.classYear && j.student.classYear.length > 2){
+        $panel.append(
+            $("<h3>", {class: "directory-panel-name"}).html(j.directoryName + " &mdash; &rsquo;" + j.student.classYear.substr(2))
+        );
+    } else {
+        $panel.append(
+            $("<h3>", {class: "directory-panel-name"}).html(j.directoryName)
+        );
+    }
+    
+    if(positions !== "") {
+        $panel.append($("<h4>", { class: "directory-panel-title"} ).html(positions));
+    }
+    
+    if(j.pronoun && sidebar != 1){
+        $panel.append(getInfoLink("Pronoun(s):", j.pronoun));
+    }
+    
+    if(j.email && sidebar != 1) {
+      $panel.append(getInfoLink("Email:", getEmailLink(j.email)));
+    }
+    
+    if(worker.workPhone && sidebar != 1) {
+      $panel.append(getInfoLink("Phone:", getTelephoneLink(worker.workPhone)));
+    } else if(worker.workPhone && sidebar == 1) {
+      $panel.append(getInfoLink("", getTelephoneLink(worker.workPhone)))
+    }
+    
+    if(worker.workLocation && sidebar != 1) {
+          $panel.append(getInfoLink("Location:", "<a href='https://www.google.com/maps/search/" + worker.workLocation + " Brunswick,ME'>"+worker.workLocation+"</a>"));
+    }
+    
+    if(j.student) {
+        if(j.student.campusPhone) {
+            $panel.append(getInfoLink("Phone:", getTelephoneLinkStudent(j.student.campusPhone)));
+        }
+    
+        if(j.student.campusMailAddress) {
+            $panel.append(getInfoLink("Campus Mail:", "<span>" + j.student.campusMailAddress + "</span>")); 
+        }
+    
+        if(j.student.campusResBld) {
+            $panel.append(getInfoLink("Residence:", "<span>" + j.student.campusResBld + "</span>"));  
+        }
+    }
+    
+    $li = $("<li>", { class: "directory-panel" });
+    
+    if(j.imageUrl) {
+        $img = $("<img>", { 
+        class: "directory-panel-image", 
+        src: j.imageUrl,
+        alt: j.directoryName });
+        $li.append($img);
+    }
+    
+    $li.append($panel);
+    
+    $ul_results.append($li);
+  }
+  
+  function getInfoLink(class_name, value) {
+    return $("<div>", {class: "directory-panel-contact"})
+      .append($("<h5>").html(class_name))
+      .append(value);
+    
+    //html("<strong>" + text + ":</strong> " + value);
+  }
+  
+  function processPhoneNum(num) {
+    return num.substring(0, 3) + "-" + num.substring(3, 6) + "-" + num.substring(6, 10);
+  }
+  
+  function getPositionsString(positions) {
+    var string = "",
+        array_length = positions.length;
+    
+    $.each(positions, function(i, j) {
+        string = string + j.title + ", " + j.department;
+        if((i + 1) < array_length) {
+          string = string + "<br/>";
+        } 
+    });
+    
+    return string;
+  }
+  
+  return {
+    init: init
+  }
+  
+}(jQuery));
+
+$(document).ready(function() {
+  // Generate dropdown options
+  var dropdown = $('#ds-dept');
+  $.getJSON( "https://webapi.bowdoin.edu/webapi/directory/departments", function(res){
+    for(i = 0; i < res.length; i++){
+        var opt = new Option(res[i], res[i]);
+        $(opt).html(res[i]);
+        $(dropdown).append(opt);
+    }
+  });
+    
+  // Search 
+  DirectorySearch.init();
+});

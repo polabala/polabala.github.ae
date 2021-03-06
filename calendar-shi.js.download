@@ -1,0 +1,226 @@
+var departmentCodes = [];
+const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun","Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+var tc = 1;
+function LoadCalendar() {
+    if(catCode != "" && catCode.indexOf("|") >= 0){
+        var callingAPIOnce = false;
+    }else{
+        var callingAPIOnce = true;
+    }
+    if(callingAPIOnce){
+        // Get list of calendars
+        calURL = 'https://apps.bowdoin.edu/calendar/CalendarService?method=ListCalendars&fmt=json';
+        var getCal = $.getJSON(calURL, function(data) {
+            $.each(data.calendars.record, function(i, e) {
+                id = e.gid;
+                name = e.gname;
+                obj = {siteName: name, code: id};
+                departmentCodes.push(obj);
+            });
+        });
+        var tim = new Date();
+        var yr = tim.getFullYear();
+        var mo = tim.getMonth()+1;
+        var dy = tim.getDate();
+        getCal.done(function() {
+            if(siteName != ""){
+                var code = departmentCodes.find(o => o.siteName === siteName)
+                if (typeof code !== 'undefined') {
+                    tc = code.code;
+                }
+                // If in main site, get full calendar
+            }else{
+                tc = catCode;
+            }
+            $.each($(".calembed"), function (n, calendar) {
+                var style = $(calendar).data('style');
+                // console.log(tc);
+                var url = "https://apps.bowdoin.edu/calendar/CalendarService?method=ListEvents&fmt=json&m="+mo+"&y="+yr+"&d="+dy+"&r=365";
+                if (tc != 1) {
+                    url = "https://apps.bowdoin.edu/calendar/CalendarService?method=ListGroupEvents&fmt=json&g="+tc+"&m="+mo+"&y="+yr+"&d="+dy+"&r=365";
+                }
+                $.getJSON(url, function(data) {
+                    // console.log(data.events);
+                    if(data.events != "" && data.events.event && data.events.event.length){
+                	    events = data.events.event;
+                    } else if (data.events != "" && data.events.record){
+                        events = data.events.record;
+                    }else if(data.events != ""){
+                        events = [data.events.event];
+                    }
+            	    if(typeof events != 'undefined' && data.events != ""){
+            	        $("div.calembedpanel").addClass("callout-panel gray");
+            	        $("div.calembedpanel > h3.callout-panel-header").show();
+                	    $(calendar).append('<ul class="event-list"></ul>');
+                	    events.sort(function(a, b) {
+                	        if(a.eventData && a.eventData != "" && b.eventData != ""){
+                                return (parseDate(a.eventData.record.Date.content).getTime() / 1000) - (parseDate(b.eventData.record.Date.content).getTime() / 1000);
+                	        } else if(!a.eventData){
+                	            return (parseDate(a.Start.content).getTime() / 1000) - (parseDate(b.Start.content).getTime() / 1000);
+                	        }
+                        });
+                	    $.each(events, function(i, e) {
+                	        // only listing 3 for art museum and event module with 'three' style
+                	        if ((siteName === "Art Museum" || style === 'three') && i > 2) {
+                	            return false;
+                	        } else if (style === 'one' && i >= 1) {
+                	            return false;
+                	        }
+                	        
+                	        if (tc === 1) {
+                	            rid = e.ReservationID;
+                	            bid = e.BookingID;
+                	        } else {
+                	            bid = e.Booking_ID;
+                	            rid = e.eventData.record.ReservationID;
+                	        }
+                             // Get additional event details
+                            $.getJSON("https://apps.bowdoin.edu/calendar/CalendarService?method=GetEvent&fmt=json&bid="+bid+"&rid="+rid, function(event) {
+                                outputEvent(event, style, calendar, callingAPIOnce);
+                            });
+                	    });
+            	    }else{
+            	        $("div.calembedpanel").has("div.calembed").remove();
+            	        $("div.calembed").remove();
+                    }
+                });
+            });
+        });
+    }else{
+        var codes = catCode.split("|");
+        $.each($(".calembed"), function (n, calendar) {
+            var style = $(calendar).data('style');
+                var cleanCodes = [];
+                $.each(codes, function(i){
+                    if(codes[i] != ""){
+                        cleanCodes.push(codes[i]);
+                    }
+                });
+            putTogetherEvents(cleanCodes, calendar, siteName, style, callingAPIOnce);
+        });
+    }
+}
+function outputPutTogetherEvents(events, calendar, siteName, style, callingAPIOnce){
+    if(events.length > 0){
+        $("div.calembedpanel").addClass("callout-panel gray");
+        $("div.calembedpanel > h3.callout-panel-header").show();
+	    $(calendar).append('<ul class="event-list"></ul>');
+	    events.sort(function(a, b) {
+	        if(a.eventData != "" && b.eventData != ""){
+                return (parseDate(a.eventData.record.Date.content).getTime() / 1000) - (parseDate(b.eventData.record.Date.content).getTime() / 1000);
+	        }
+        });
+	    $.each(events, function(i, e) {
+	        // only listing 3 for art museum and event module with 'three' style
+	        if ((siteName === "Art Museum" || style === 'three') && i > 2) {
+	            return false;
+	        } else if (style === 'one' && i >= 1) {
+	            return false;
+	        }
+	        
+             // Get additional event details
+            outputEvent(e, style, calendar, callingAPIOnce);
+	    });
+    }else{
+        $("div.calembedpanel").has("div.calembed").remove();
+        $("div.calembed").remove();
+    }
+}
+function putTogetherEvents(cleanCodes, calendar, siteName, style, callingAPIOnce){
+    var events = [];
+    var countLoop = -1;
+    var loopFinalIndex = cleanCodes.length - 1;
+    var currDate = new Date();
+    $.each(cleanCodes, function(i){
+        if(cleanCodes[i] != ""){
+            var url = "https://apps.bowdoin.edu/calendar/CalendarService?method=GetEvent&fmt=json&bid=" + cleanCodes[i] + "&rid=";
+            var getEvents = $.getJSON(url, function(data) {
+                if(data.event  != "" && parseDate(data.event.eventData.record.Date.content).getTime() >= currDate.getTime()){
+                    if(events.length > 0){
+                        events.push(data.event)
+                        countLoop = countLoop + 1;
+                    }else{
+                        events = [data.event];
+                        countLoop = countLoop + 1;
+                    }
+                }else{
+                    countLoop = countLoop + 1;
+                }
+            });
+            getEvents.done( function(){
+                if(loopFinalIndex == countLoop){
+                    outputPutTogetherEvents(events, calendar, siteName, style, callingAPIOnce);
+                }
+            });
+        }
+    });
+}
+
+function outputEvent(event, style, calendar, callingAPIOnce){
+    if((callingAPIOnce && event.event.eventData != "") || (!callingAPIOnce && event.eventData != "")){
+        if(callingAPIOnce && event.event.eventData != ""){
+            details = event.event.eventData.record;
+            if (event.event.eventDetail.record.length >= 2) {
+                summary = event.event.eventDetail.record[1].Notes;
+            }
+            var rid= details.ReservationID;
+        }else if(!callingAPIOnce && event.eventData != ""){
+            details = event.eventData.record;
+            if (event.eventDetail.record.length >= 2) {
+                summary = event.eventDetail.record[1].Notes;
+            }
+            var rid= details.ReservationID;
+        }
+        title   = details.EventName;
+        day     = details.Date.gdate.day;
+        month   = monthNames[details.Date.gdate.month-1];
+        summary = '';
+        if (summary == '. . .'){
+            summary = '';
+        }
+        bid     = details.ID;
+        link    = "https://www.bowdoin.edu/calendar/event.html?bid="+bid+"&rid="+rid;
+        startDate = details.TimeEventStart.content;
+        //console.error("sd:"+startDate);
+        var dateall = startDate.split(" ");
+        var datep = dateall[0];
+        var timep = dateall[1];
+        var safari = datep.split("-");
+        var ie = timep.split(":");
+        startDate = safari[1]+"/"+safari[2]+"/"+safari[0]+" "+ie[0]+":"+ie[1]+":00"; // Month/Day/Year HH:mm:ss
+        //console.error("sd:"+startDate);
+        date    = new Date(startDate);
+        time    = ["Sun","Mon","Tues","Wednes","Thurs","Fri","Satur"][date.getDay()] + "day" + ", " + ((date.getHours() + 11) % 12 + 1) + ":" + (date.getMinutes()<10?'0':'') + date.getMinutes() + ((date.getHours() >= 12) ? "pm" : "am");
+        if (style === 'three') {
+            $(calendar).find(".event-list").append('<li class="event-item" data-date="'+date+'"><div class="event-item-flexbox"><div class="event-item-date date-icon"><a href="'+link+'" title="View event details"><span class="date-icon-month">'+month+'</span><span class="date-icon-date">'+day+'</span></a></div><div class="event-item-time">' + time + '</div><div class="event-item-text"><h5 class="event-item-title"><a href="'+link+'">'+title+'</a></h5><p class="event-item-summary">'+summary+'</p></div></div></li>');
+        } else {
+            $(calendar).find(".event-list").append('<li class="event-item" data-date="'+date+'"><div class="event-item-flexbox"><div class="event-item-date date-icon"><a href="'+link+'" title="View event details"><span class="date-icon-month">'+month+'</span><span class="date-icon-date">'+day+'</span></a></div><div class="event-item-text"><h5 class="event-item-title"><a href="'+link+'">'+title+'</a></h5><p class="event-item-summary">'+summary+'</p></div></div></li>');
+        }
+    }
+}
+
+function parseDate(input) {
+  var parts = input.match(/(\d+)/g);
+  // new Date(year, month [, date [, hours[, minutes[, seconds[, ms]]]]])
+  return new Date(parts[0], parts[1]-1, parts[2], parts[3], parts[4], parts[5]); //     months are 0-based
+}
+
+// Sort the events once they are done loading
+$(document).ajaxStop(function () {
+    $.each($(".calembed"), function (n, calendar) {
+        var list = $(calendar).find(".event-list li");
+        list.sort(function(a, b) {
+            return ((new Date($(a).data('date')).getTime() / 1000) - (new Date($(b).data('date')).getTime() / 1000));
+        });
+        $(calendar).find(".event-list").html(list);
+    });
+});
+
+$(function() {
+    if($("div.calembedpanel").length > 0 || $("section div.calembed").length > 0 || $("div.calembed").length > 0){
+        LoadCalendar();
+    } else {
+        $("div.calembed").remove();
+    }
+});

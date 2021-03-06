@@ -1,0 +1,45 @@
+// ---------------------------------------------------------
+//
+//  GALLERY TILES
+//
+//  Used on campaign stories
+//  Can also be used on main Bowdoin site
+//  Built using carousel gallery functionality
+//
+// ---------------------------------------------------------
+
+// $win, $body, urlPathArray and assetPath are variables from public.js
+
+;(function($) {
+
+
+  // initialize masonry to position the gallery tiles
+  var $galleryTiles = $('.gallery-tiles-inner').masonry({
+    itemSelector: '.gallery-image',
+    columnWidth: '.gallery-image',
+    gutter: 15,
+    percentPosition: true
+  });
+
+
+  // layout Masonry after each image loads
+  $galleryTiles.imagesLoaded().progress( function() {
+    $galleryTiles.masonry('layout');
+  });
+
+
+  // open carousel fullscreen when clicking gallery tile
+  $('.gallery-tiles').on( 'click', '.gallery-image', function() {
+
+    var $selectedImage = $(this),
+        $gallery = $(this).parents('.gallery-tiles'),
+        $galleryCarousel = $gallery.find('.gallery-carousel'),
+        selectedImageIdx = $selectedImage.index();
+
+    // show the selected image
+    $galleryCarousel.flickity( 'select', selectedImageIdx, false, true )
+    $galleryCarousel.flickity('viewFullscreen');
+  });
+
+
+})(jQuery);
